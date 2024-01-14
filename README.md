@@ -22,7 +22,7 @@ The Unity tool designed to locate missing script components.
 
 ## Usage Guide
 
-![Tutorial](./Preview/Tutorial.mp4)
+https://github.com/snoopyuj/DeleteMissingScripts/assets/2370689/27aabf42-fdd1-494f-bed3-eb53007bb203
 
 1. Open the search window: `Window > bTools > Delete Missing Scripts`.
 2. Click the search button based on your needs.
