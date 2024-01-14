@@ -17,7 +17,7 @@ The Unity tool designed to locate missing script components.
 
 ## Installation
 
-- Method 1: Download the Unity Package from the Release page and import it into your project.
+- Method 1: Download the Unity Package from [the Release page](https://github.com/snoopyuj/DeleteMissingScripts/releases) and import it into your project.
 - Method 2: Copy the `Plugins` folder directly into your project.
 
 ## Usage Guide
