@@ -26,6 +26,8 @@ public class DeleteMissingScriptsEditor : Editor
         }
 
         if (!DeleteMissingScriptsWindow.missingMonoList.Exists(x => x == target))
+        {
             DeleteMissingScriptsWindow.missingMonoList.Add(target);
+        }
     }
 }

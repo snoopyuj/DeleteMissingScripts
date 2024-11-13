@@ -19,7 +19,7 @@ public class DeleteMissingScriptsWindow : EditorWindow
     public static bool activeDeleteMissingScript = false;
     public static List<Object> missingMonoList = new List<Object>();
 
-    public List<GameObject> missingObjList = new List<GameObject>();
+    public List<Object> missingObjList = new List<Object>();    // need to be public for FindProperty()
 
     private int curDeleteIdx = -1;
     private int missingScriptsCount = 0;
@@ -109,10 +109,13 @@ public class DeleteMissingScriptsWindow : EditorWindow
         if (curDeleteIdx < 0 || curDeleteIdx >= missingObjList.Count)
         {
             Selection.activeObject = null;
-            missingObjList.RemoveAll(x => x == null);
             curDeleteIdx = -1;
             isAutoWalkThroughList = false;
             activeDeleteMissingScript = false;
+
+            missingObjList.RemoveAll(x => x == null);
+            AssetDatabase.SaveAssets();
+
             Repaint();
 
             return;
@@ -121,17 +124,21 @@ public class DeleteMissingScriptsWindow : EditorWindow
         Selection.activeObject = missingObjList[curDeleteIdx];
         InternalEditorUtility.RepaintAllViews();
 
-        bool isFixTimeArrived = (EditorApplication.timeSinceStartup - curScriptFixStartTime) >= FixTimePerScript;
+        var isFixTimeArrived = (EditorApplication.timeSinceStartup - curScriptFixStartTime) >= FixTimePerScript;
+        var missingObj = (GameObject)missingObjList[curDeleteIdx];
 
-        if (isFixTimeArrived || !IsExistMissingInGO(missingObjList[curDeleteIdx], false))
+        if (isFixTimeArrived || !IsExistMissingInGO(missingObj, false))
         {
             if (isFixTimeArrived)
             {
-                Debug.LogWarning("Couldn't delete missing: [" + curDeleteIdx + "] <color=yellow>" + missingObjList[curDeleteIdx].name + "</color>");
+                Debug.LogWarning("Couldn't delete missing: [" + curDeleteIdx + "] <color=yellow>" + missingObj.name + "</color>");
             }
             else
             {
-                Debug.Log("[" + curDeleteIdx + "] Fix Missing: " + missingObjList[curDeleteIdx].name);
+                Debug.Log("[" + curDeleteIdx + "] Fix Missing: " + missingObj.name);
+
+                EditorUtility.SetDirty(missingObj);                
+
                 missingObjList[curDeleteIdx] = null;
             }
 
