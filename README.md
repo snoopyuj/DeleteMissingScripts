@@ -4,7 +4,7 @@ The Unity tool designed to locate missing script components.
 
 > _Author: bwaynesu_  
 > _Created: April 18, 2017_  
-> _Last Updated: Nov 14, 2024_
+> _Last Updated: Nov 14, 2024_  
 > _Tags: C#, Unity3D_  
 > _Support: Unity 2017 or Higher_
 
