@@ -1,6 +1,12 @@
 /*
- * @author	Wayne Su
- * @date	2017/04/18
+ * Author: bwaynesu
+ * Date: 2017-04-18
+ * GitHub: https://github.com/snoopyuj
+ * Description: This script is used to delete missing scripts in the scene and project.
+ *
+ * Change Log:
+ *   - 1.0.0 (2024-01-14) - First version.
+ *   - 1.1.0 (2024-11-14) - Add the ability to delete missing ScriptableObjects.
  */
 
 using System.Collections.Generic;
@@ -19,13 +25,23 @@ public class DeleteMissingScriptsWindow : EditorWindow
     public static bool activeDeleteMissingScript = false;
     public static List<Object> missingMonoList = new List<Object>();
 
-    public List<Object> missingObjList = new List<Object>();    // need to be public for FindProperty()
+    /// <summary>
+    /// need to be public for FindProperty()
+    /// </summary>
+    public List<Object> missingObjList = new List<Object>();
+
+    /// <summary>
+    /// need to be public for FindProperty()
+    /// </summary>
+    public List<string> missingScriptableObjNameList = new List<string>();
 
     private int curDeleteIdx = -1;
     private int missingScriptsCount = 0;
     private Vector2 scrollPos = Vector2.zero;
     private bool isAutoWalkThroughList = false;
     private double curScriptFixStartTime = 0f;
+    private bool isSearchIncludeScriptableObj = true;
+    private List<string> missingScriptableObjPathList = new List<string>();
 
     [MenuItem("Window/bTools/Delete Missing Scripts", false)]
     public static void ShowWindow()
@@ -37,10 +53,14 @@ public class DeleteMissingScriptsWindow : EditorWindow
     private void Update()
     {
         if (missingMonoList.Count > 0)
+        {
             DestroyMissingMonos();
+        }
 
         if (!isAutoWalkThroughList)
+        {
             return;
+        }
 
         WalkThroughList();
     }
@@ -53,7 +73,9 @@ public class DeleteMissingScriptsWindow : EditorWindow
     private void OnGUI()
     {
         if (window == null)
+        {
             window = GetWindow(typeof(DeleteMissingScriptsWindow));
+        }
 
         if (!isAutoWalkThroughList)
         {
@@ -87,21 +109,31 @@ public class DeleteMissingScriptsWindow : EditorWindow
                 {
                     ResetFindValue();
 
-                    List<string> pathList = new List<string>();
-                    DirSearch(GetSelectedPathOrFallback(), pathList);
-                    FindAllPrefabs(pathList.ToArray());
+                    var selectedPathList = GetSelectedPathsOrFallback();
+                    var searchPathList = new List<string>();
+
+                    for (var i = 0; i < selectedPathList.Count; ++i)
+                    {
+                        DirSearch(selectedPathList[i], ref searchPathList);
+                    }
+
+                    FindAllPrefabs(searchPathList.ToArray());
                 }
                 else if (GUILayout.Button("Search All Prefabs"))
                 {
                     ResetFindValue();
                     FindAllPrefabs(AssetDatabase.GetAllAssetPaths());
                 }
+
+                isSearchIncludeScriptableObj = EditorGUILayout.Toggle("Include ScriptableObjects", isSearchIncludeScriptableObj);
             }
             EditorGUILayout.EndHorizontal();
         }
 
-        if (missingObjList.Count > 0)
+        if (missingObjList.Count > 0 || missingScriptableObjPathList.Count > 0)
+        {
             ShowListInfo();
+        }
     }
 
     private void WalkThroughList()
@@ -117,6 +149,7 @@ public class DeleteMissingScriptsWindow : EditorWindow
             AssetDatabase.SaveAssets();
 
             Repaint();
+            Debug.Log("<color=green>End fixing</color>");
 
             return;
         }
@@ -137,7 +170,7 @@ public class DeleteMissingScriptsWindow : EditorWindow
             {
                 Debug.Log("[" + curDeleteIdx + "] Fix Missing: " + missingObj.name);
 
-                EditorUtility.SetDirty(missingObj);                
+                EditorUtility.SetDirty(missingObj);
 
                 missingObjList[curDeleteIdx] = null;
             }
@@ -152,39 +185,54 @@ public class DeleteMissingScriptsWindow : EditorWindow
         missingScriptsCount -= missingMonoList.Count;
 
         for (var i = 0; i < missingMonoList.Count; ++i)
+        {
             DestroyImmediate(missingMonoList[i], true);
+        }
 
         missingMonoList.Clear();
     }
 
-    private void DirSearch(string _sDir, List<string> _pathList)
+    private void DirSearch(string _sDir, ref List<string> _pathList)
     {
         try
         {
-            foreach (string f in Directory.GetFiles(_sDir))
-                _pathList.Add(f);
+            foreach (var fileWithPath in Directory.GetFiles(_sDir))
+            {
+                var fileWithPathCorrect = fileWithPath.Replace("\\", "/");
+                if (_pathList.Contains(fileWithPathCorrect))
+                {
+                    continue;
+                }
 
-            foreach (string d in Directory.GetDirectories(_sDir))
-                DirSearch(d, _pathList);
+                _pathList.Add(fileWithPathCorrect);
+            }
+
+            foreach (var dir in Directory.GetDirectories(_sDir))
+            {
+                DirSearch(dir, ref _pathList);
+            }
         }
-        catch (System.Exception _excpt)
+        catch (System.Exception e)
         {
-            Debug.Log(_excpt.Message);
+            Debug.Log(e.Message);
         }
     }
 
     private void ResetFindValue()
     {
         missingScriptsCount = 0;
-        missingObjList.Clear();
         activeDeleteMissingScript = false;
         curDeleteIdx = -1;
+
         missingMonoList.Clear();
+        missingObjList.Clear();
+        missingScriptableObjPathList.Clear();
+        missingScriptableObjNameList.Clear();
     }
 
     private void FindInSelected()
     {
-        GameObject[] selectGoAry = Selection.gameObjects;
+        var selectGoAry = Selection.gameObjects;
 
         for (var i = 0; i < selectGoAry.Length; ++i)
         {
@@ -192,37 +240,38 @@ public class DeleteMissingScriptsWindow : EditorWindow
         }
     }
 
-    private void FindMissingAndAddToList(GameObject _go)
+    private bool FindMissingAndAddToList(GameObject _go, bool _isFindChild = true)
     {
-        FindInGO(_go);
-    }
+        var monos = _go.GetComponents<MonoBehaviour>();
+        var isMissingScriptsExist = false;
 
-    private bool FindInGO(GameObject _go, bool _isFindChild = true)
-    {
-        MonoBehaviour[] monos = _go.GetComponents<MonoBehaviour>();
-        bool isMissingScriptsExist = false;
-
-        for (int i = 0; i < monos.Length; i++)
+        for (var i = 0; i < monos.Length; i++)
         {
-            if (monos[i] == null)
+            if (monos[i] != null)
             {
-                isMissingScriptsExist = true;
-                ++missingScriptsCount;
+                continue;
+            }
 
-                if (!missingObjList.Exists(x => x == _go))
-                    missingObjList.Add(_go);
+            isMissingScriptsExist = true;
+
+            ++missingScriptsCount;
+
+            if (!missingObjList.Exists(x => x == _go))
+            {
+                missingObjList.Add(_go);
             }
         }
 
-        if (_isFindChild)
+        if (!_isFindChild)
         {
-            foreach (Transform childT in _go.transform)
-            {
-                bool isChildMissingScriptsExist = FindInGO(childT.gameObject);
+            return isMissingScriptsExist;
+        }
 
-                if (isChildMissingScriptsExist && !isMissingScriptsExist)
-                    isMissingScriptsExist = true;
-            }
+        foreach (Transform childTrans in _go.transform)
+        {
+            var isChildMissingScriptsExist = FindMissingAndAddToList(childTrans.gameObject, false);
+
+            isMissingScriptsExist = isMissingScriptsExist || isChildMissingScriptsExist;
         }
 
         return isMissingScriptsExist;
@@ -230,20 +279,26 @@ public class DeleteMissingScriptsWindow : EditorWindow
 
     private bool IsExistMissingInGO(GameObject _go, bool _isFindChild = true)
     {
-        MonoBehaviour[] monos = _go.GetComponents<MonoBehaviour>();
+        var monos = _go.GetComponents<MonoBehaviour>();
 
-        for (int i = 0; i < monos.Length; i++)
+        for (var i = 0; i < monos.Length; i++)
         {
             if (monos[i] == null)
+            {
                 return true;
+            }
         }
 
-        if (_isFindChild)
+        if (!_isFindChild)
         {
-            foreach (Transform childT in _go.transform)
+            return false;
+        }
+
+        foreach (Transform childT in _go.transform)
+        {
+            if (IsExistMissingInGO(childT.gameObject))
             {
-                if (IsExistMissingInGO(childT.gameObject))
-                    return true;
+                return true;
             }
         }
 
@@ -252,36 +307,61 @@ public class DeleteMissingScriptsWindow : EditorWindow
 
     private void FindAllPrefabs(string[] _pathAry)
     {
-        string p = null;
-
         for (var i = 0; i < _pathAry.Length; ++i)
         {
-            p = _pathAry[i];
-            if (p.Contains(".meta") || !p.Contains(".prefab"))
-                continue;
+            var path = _pathAry[i];
+            var ext = Path.GetExtension(path);
 
-            GameObject somePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(p);
+            if (isSearchIncludeScriptableObj && ext == ".asset")
+            {
+                var asset = AssetDatabase.LoadAssetAtPath<Object>(path);
+                if (asset == null && !missingScriptableObjPathList.Contains(path))
+                {
+                    missingScriptableObjPathList.Add(path);
+                    missingScriptableObjNameList.Add(Path.GetFileNameWithoutExtension(path));
+                }
+
+                continue;
+            }
+
+            if (ext == ".meta" || ext != ".prefab")
+            {
+                continue;
+            }
+
+            var somePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
             if (somePrefab == null)
             {
-                Debug.LogWarning("Couldn't load the prefab: <color=yellow>" + p + "</color>. \t Please check it manually.");
+                Debug.LogWarning("Couldn't load the prefab: <color=yellow>" + path + "</color>. \t Please check it manually.");
+                continue;
             }
-            else
-            {
-                FindMissingAndAddToList(somePrefab);
-            }
+
+            FindMissingAndAddToList(somePrefab);
         }
     }
 
     private void ShowListInfo()
     {
         EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Missing Scripts Count: " + missingScriptsCount);
+        EditorGUILayout.Space();
+
+        if (missingObjList.Count > 0)
+        {
+            EditorGUILayout.LabelField("Missing Scripts Count: " + missingScriptsCount);
+        }
+
+        if (missingScriptableObjNameList.Count > 0)
+        {
+            EditorGUILayout.LabelField("Missing ScriptableObjects Count: " + missingScriptableObjNameList.Count);
+        }
 
         EditorGUILayout.BeginHorizontal();
         {
             if (GUILayout.Button("Delete Missing"))
             {
-                Debug.Log("Start fixing");
+                Debug.Log("<color=green>Start fixing</color>");
+
+                DeleteMissingScriptableObjects();
 
                 isAutoWalkThroughList = true;
                 curDeleteIdx = 0;
@@ -310,36 +390,114 @@ public class DeleteMissingScriptsWindow : EditorWindow
         }
         EditorGUILayout.EndHorizontal();
 
-        scrollPos = EditorGUILayout.BeginScrollView(scrollPos, GUILayout.Width(window.position.width), GUILayout.Height(window.position.height - 150f));
+        EditorGUILayout.Space();
+
+        scrollPos = EditorGUILayout.BeginScrollView(scrollPos, GUILayout.Width(window.position.width), GUILayout.Height(window.position.height - 180f));
         {
             ShowMissingObjList();
+            ShowMissingScriptableObjNameList();
         }
         EditorGUILayout.EndScrollView();
     }
 
     private void ShowMissingObjList()
     {
-        SerializedObject so = new SerializedObject(this);
-        SerializedProperty missingListProperty = so.FindProperty("missingObjList");
+        if (missingObjList.Count == 0)
+        {
+            return;
+        }
 
-        if (missingListProperty != null)
-            EditorGUILayout.PropertyField(missingListProperty, includeChildren: true);
+        var so = new SerializedObject(this);
+        var missingListProperty = so.FindProperty("missingObjList");
+
+        if (missingListProperty == null)
+        {
+            return;
+        }
+
+        GUI.enabled = false;
+        EditorGUILayout.PropertyField(missingListProperty, includeChildren: true);
+        GUI.enabled = true;
     }
 
-    private string GetSelectedPathOrFallback()
+    private void ShowMissingScriptableObjNameList()
     {
-        string path = "Assets";
-
-        foreach (Object obj in Selection.GetFiltered(typeof(Object), SelectionMode.Assets))
+        if (missingScriptableObjNameList.Count == 0)
         {
-            path = AssetDatabase.GetAssetPath(obj);
+            return;
+        }
+
+        var so = new SerializedObject(this);
+        var missingListProperty = so.FindProperty("missingScriptableObjNameList");
+
+        if (missingListProperty == null)
+        {
+            return;
+        }
+
+        GUI.enabled = false;
+        EditorGUILayout.PropertyField(missingListProperty, includeChildren: true);
+        GUI.enabled = true;
+    }
+
+    private List<string> GetSelectedPathsOrFallback()
+    {
+        var pathList = new List<string>();
+
+        foreach (var obj in Selection.GetFiltered(typeof(Object), SelectionMode.Assets))
+        {
+            var path = AssetDatabase.GetAssetPath(obj);
+
             if (!string.IsNullOrEmpty(path) && File.Exists(path))
             {
                 path = Path.GetDirectoryName(path);
-                break;
             }
+
+            pathList.Add(path);
         }
 
-        return path;
+        if (pathList.Count == 0)
+        {
+            pathList.Add("Assets");
+        }
+
+        return pathList;
+    }
+
+    private void DeleteMissingScriptableObjects()
+    {
+        var deleteFailedPathList = new List<string>();
+        var deleteFailedNameList = new List<string>();
+
+        AssetDatabase.StartAssetEditing();
+        for (var i = 0; i < missingScriptableObjPathList.Count; ++i)
+        {
+            var path = missingScriptableObjPathList[i];
+            var name = missingScriptableObjNameList[i];
+
+            if (AssetDatabase.MoveAssetToTrash(path))
+            {
+                Debug.Log("[" + i + "] Delete Missing ScriptableObject: " + name);
+            }
+            else
+            {
+                Debug.LogWarning(
+                    "Couldn't delete the ScriptableObject: <color=yellow>"
+                    + name
+                    + "</color>. Please check it manually. (<color=yellow>"
+                    + path
+                    + "</color>)");
+
+                deleteFailedPathList.Add(path);
+                deleteFailedNameList.Add(name);
+            }
+        }
+        AssetDatabase.StopAssetEditing();
+
+        missingScriptableObjPathList.Clear();
+        missingScriptableObjNameList.Clear();
+
+        missingScriptableObjPathList.AddRange(deleteFailedPathList);
+        missingScriptableObjNameList.AddRange(deleteFailedNameList);
     }
 }
