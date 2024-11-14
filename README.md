@@ -16,7 +16,7 @@ The Unity tool designed to locate missing script components.
 - Searches for missing script components in scene objects or Prefabs within the project.
 - Detects missing scripts even in nested Prefab child objects.
 - Works with inactive objects.
-- Supports deleting missing scriptable objects. (Nov 14, 2024)
+- Supports deleting missing ScriptableObjects. (Nov 14, 2024)
 
 ## Installation
 
